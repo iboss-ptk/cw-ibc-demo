@@ -1,8 +1,8 @@
 use cosmwasm_std::{
-    entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
-    QueryResponse, Response, StdError, StdResult,
+    entry_point, to_binary, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order, QueryResponse,
+    Response, StdError, StdResult,
 };
-use simple_ica::PacketMsg;
+use simple_ica::{MsgWithCallback, PacketMsg};
 
 use crate::ibc::PACKET_LIFETIME;
 use crate::msg::{
@@ -65,7 +65,7 @@ pub fn execute_send_msgs(
     env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<CosmosMsg>,
+    msgs: Vec<MsgWithCallback>,
 ) -> StdResult<Response> {
     // auth check
     let cfg = CONFIG.load(deps.storage)?;

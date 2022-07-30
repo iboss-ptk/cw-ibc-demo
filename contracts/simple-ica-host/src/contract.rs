@@ -1,14 +1,14 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, wasm_execute, BankMsg, CosmosMsg, Deps, DepsMut, Empty,
-    Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order,
-    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
+    entry_point, from_slice, to_binary, wasm_execute, BankMsg, Deps, DepsMut, Empty, Env, Event,
+    Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg,
+    IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg, IbcPacketReceiveMsg,
+    IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order, QueryResponse, Reply, Response,
+    StdResult, SubMsg, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
-    check_order, check_version, BalancesResponse, DispatchResponse, PacketMsg, StdAck,
-    WhoAmIResponse, IBC_APP_VERSION,
+    check_order, check_version, BalancesResponse, DispatchResponse, MsgWithCallback, PacketMsg,
+    StdAck, WhoAmIResponse, IBC_APP_VERSION,
 };
 
 use crate::error::ContractError;
@@ -250,7 +250,7 @@ fn receive_balances(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse,
 fn receive_dispatch(
     deps: DepsMut,
     caller: String,
-    msgs: Vec<CosmosMsg>,
+    msgs: Vec<MsgWithCallback>,
 ) -> Result<IbcReceiveResponse, ContractError> {
     // what is the reflect contract here
     let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
@@ -259,6 +259,7 @@ fn receive_dispatch(
     let response = DispatchResponse { results: vec![] };
     let acknowledgement = StdAck::success(&response);
     // create the message to re-dispatch to the reflect contract
+    let msgs = msgs.into_iter().map(|m| m.msg).collect();
     let reflect_msg = cw1_whitelist::msg::ExecuteMsg::Execute { msgs };
     let wasm_msg = wasm_execute(reflect_addr, &reflect_msg, vec![])?;
 
@@ -303,8 +304,8 @@ mod tests {
         mock_wasmd_attr, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
     };
     use cosmwasm_std::{
-        attr, coin, coins, from_slice, BankMsg, Binary, OwnedDeps, SubMsgResponse, SubMsgResult,
-        WasmMsg,
+        attr, coin, coins, from_slice, BankMsg, Binary, CosmosMsg, OwnedDeps, SubMsgResponse,
+        SubMsgResult, WasmMsg,
     };
     use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
@@ -479,11 +480,13 @@ mod tests {
         let account = "acct-123";
 
         // receive a packet for an unregistered channel returns app-level error (not Result::Err)
-        let msgs_to_dispatch = vec![BankMsg::Send {
-            to_address: "my-friend".into(),
-            amount: coins(123456789, "uatom"),
-        }
-        .into()];
+        let msgs_to_dispatch = vec![MsgWithCallback::fire_and_forget(
+            BankMsg::Send {
+                to_address: "my-friend".into(),
+                amount: coins(123456789, "uatom"),
+            }
+            .into(),
+        )];
         let ibc_msg = PacketMsg::Dispatch {
             msgs: msgs_to_dispatch.clone(),
         };
@@ -517,12 +520,9 @@ mod tests {
             assert_eq!(0, funds.len());
             // parse the message - should callback with proper channel_id
             let rmsg: cw1_whitelist::msg::ExecuteMsg = from_slice(msg).unwrap();
-            assert_eq!(
-                rmsg,
-                cw1_whitelist::msg::ExecuteMsg::Execute {
-                    msgs: msgs_to_dispatch
-                }
-            );
+
+            let msgs = msgs_to_dispatch.into_iter().map(|m| m.msg).collect();
+            assert_eq!(rmsg, cw1_whitelist::msg::ExecuteMsg::Execute { msgs });
         } else {
             panic!("invalid return message: {:?}", res.messages[0]);
         }

@@ -1,10 +1,14 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
-    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
+    entry_point, from_slice, to_binary, Binary, DepsMut, Env, Ibc3ChannelOpenResponse,
+    IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg,
+    IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
+    WasmMsg,
 };
 
-use simple_ica::{check_order, check_version, BalancesResponse, PacketMsg, StdAck, WhoAmIResponse};
+use simple_ica::{
+    check_order, check_version, BalancesResponse, MsgWithCallback, PacketMsg, StdAck,
+    WhoAmIResponse,
+};
 
 use crate::error::ContractError;
 use crate::state::{AccountData, ACCOUNTS};
@@ -101,7 +105,7 @@ pub fn ibc_packet_ack(
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
 
     match packet {
-        PacketMsg::Dispatch { .. } => acknowledge_dispatch(deps, caller, res),
+        PacketMsg::Dispatch { msgs } => acknowledge_dispatch(deps, caller, msgs, res),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
     }
@@ -112,10 +116,23 @@ pub fn ibc_packet_ack(
 fn acknowledge_dispatch(
     _deps: DepsMut,
     _caller: String,
+    msgs: Vec<MsgWithCallback>,
     _ack: StdAck,
 ) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
-    Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
+    // TODO: pass along callback
+    let wasm_msgs = msgs.into_iter().filter_map(|m| {
+        m.callback_contract
+            .map(|callback_contract| WasmMsg::Execute {
+                contract_addr: callback_contract,
+                msg: Binary(vec![]), // TODO: Generic callback endpoint -> new package with the required type
+                funds: vec![],       // TODO: allow send funds
+            })
+    });
+
+    Ok(IbcBasicResponse::new()
+        .add_messages(wasm_msgs)
+        .add_attribute("action", "acknowledge_dispatch"))
 }
 
 // receive PacketMsg::WhoAmI response
@@ -209,7 +226,7 @@ mod tests {
         MockStorage,
     };
     use cosmwasm_std::{coin, coins, BankMsg, CosmosMsg, IbcAcknowledgement, OwnedDeps};
-    use simple_ica::{APP_ORDER, BAD_APP_ORDER, IBC_APP_VERSION};
+    use simple_ica::{MsgWithCallback, APP_ORDER, BAD_APP_ORDER, IBC_APP_VERSION};
 
     const CREATOR: &str = "creator";
 
@@ -315,11 +332,13 @@ mod tests {
         who_am_i_response(deps.as_mut(), channel_id, remote_addr);
 
         // try to dispatch a message
-        let msgs_to_dispatch = vec![BankMsg::Send {
-            to_address: "my-friend".into(),
-            amount: coins(123456789, "uatom"),
-        }
-        .into()];
+        let msgs_to_dispatch = vec![MsgWithCallback::fire_and_forget(
+            BankMsg::Send {
+                to_address: "my-friend".into(),
+                amount: coins(123456789, "uatom"),
+            }
+            .into(),
+        )];
         let handle_msg = ExecuteMsg::SendMsgs {
             channel_id: channel_id.into(),
             msgs: msgs_to_dispatch,

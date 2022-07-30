@@ -3,11 +3,33 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct MsgWithCallback {
+    pub msg: CosmosMsg,
+    pub callback_contract: Option<String>,
+}
+
+impl MsgWithCallback {
+    pub fn new(msg: CosmosMsg, callback_contract: String) -> Self {
+        Self {
+            msg,
+            callback_contract: Some(callback_contract),
+        }
+    }
+    pub fn fire_and_forget(msg: CosmosMsg) -> Self {
+        Self {
+            msg,
+            callback_contract: None,
+        }
+    }
+}
+
 /// This is the message we send over the IBC channel
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PacketMsg {
-    Dispatch { msgs: Vec<CosmosMsg> },
+    Dispatch { msgs: Vec<MsgWithCallback> },
     WhoAmI {},
     Balances {},
 }

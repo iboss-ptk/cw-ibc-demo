@@ -14,10 +14,10 @@
     "fix": "run-s fix:*",
     "fix:prettier": "prettier \"**/*.{ts,md}\" --write",
     "fix:lint": "eslint src --ext .ts --fix",
-    "test": "run-s build test:*",
+    "test": "run-s build test:unit",
     "test:lint": "eslint src --ext .ts",
     "test:prettier": "prettier \"**/*.{ts,md}\" --list-different",
-    "test:unit": "nyc --silent ava --serial"
+    "test:unit": "ava --serial"
   },
   "dependencies": {
     "@confio/relayer": "^0.5.1"

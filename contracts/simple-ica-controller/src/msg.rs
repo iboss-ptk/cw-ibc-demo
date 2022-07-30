@@ -1,6 +1,7 @@
-use cosmwasm_std::{Coin, CosmosMsg, Empty, Timestamp};
+use cosmwasm_std::{Coin, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use simple_ica::MsgWithCallback;
 
 use crate::state::AccountData;
 
@@ -19,7 +20,7 @@ pub enum ExecuteMsg {
     SendMsgs {
         channel_id: String,
         // Note: we don't handle custom messages on remote chains
-        msgs: Vec<CosmosMsg<Empty>>,
+        msgs: Vec<MsgWithCallback>,
     },
     CheckRemoteBalance {
         channel_id: String,
